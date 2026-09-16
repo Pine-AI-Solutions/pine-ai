@@ -1,9 +1,14 @@
+using Microsoft.EntityFrameworkCore;
 using PineAI.Api.Landing.Auth;
+using PineAI.Api.Landing.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddHttpClient();
+
+builder.Services.AddDbContext<LandingBlogDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("LandingBlogDb")));
 
 builder.Services.AddAuthentication()
     .AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(
@@ -26,6 +31,12 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<LandingBlogDbContext>();
+    db.Database.Migrate();
+}
 
 app.UseCors("LandingPolicy");
 app.UseAuthentication();
