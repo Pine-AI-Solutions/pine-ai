@@ -10,17 +10,16 @@ namespace PineAI.Backup;
 public class Worker(
     ILogger<Worker> logger,
     IOptions<BackupSettings> options,
-    IConfiguration configuration,
     IHttpClientFactory httpClientFactory) : BackgroundService
 {
     private const long MaxBaleDocumentSizeBytes = 50 * 1024 * 1024;
 
     private readonly BackupSettings _settings = options.Value;
-    private readonly string _connectionString = configuration.GetConnectionString("DefaultConnection");
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Backup worker started. Interval: {Hours} hour(s).", _settings.IntervalHours);
+        logger.LogInformation("Backup worker started. Interval: {Hours} hour(s). Databases: {Count}.",
+            _settings.IntervalHours, _settings.Databases.Count(d => d.Enabled));
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -45,19 +44,60 @@ public class Worker(
 
     private async Task RunBackupCycleAsync(CancellationToken cancellationToken)
     {
-        var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-        var bakFileName = $"{_settings.DatabaseName}_{timestamp}.bak";
-        var zipFileName = $"{_settings.DatabaseName}_{timestamp}.zip";
+        var databases = _settings.Databases.Where(d => d.Enabled).ToList();
+
+        if (databases.Count == 0)
+        {
+            logger.LogWarning("No enabled databases found in BackupSettings:Databases.");
+            return;
+        }
 
         Directory.CreateDirectory(_settings.LocalTempPath);
+
+        var usedFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var index = 0; index < databases.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // One failing database must not stop the others.
+            await BackupSingleDatabaseAsync(databases[index], index, usedFileNames, cancellationToken);
+        }
+    }
+
+    private async Task BackupSingleDatabaseAsync(
+        DatabaseSettings database,
+        int index,
+        HashSet<string> usedFileNames,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(database.DatabaseName) || string.IsNullOrWhiteSpace(database.ConnectionString))
+        {
+            logger.LogError("Databases[{Index}] is missing DatabaseName or ConnectionString. Skipped.", index);
+            return;
+        }
+
+        var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+        var baseName = MakeSafeFileName(database.DatabaseName);
+        var fileBaseName = $"{baseName}_{timestamp}";
+
+        // Keeps zip names different even if two entries share a name or run in the same second.
+        if (!usedFileNames.Add(fileBaseName))
+        {
+            fileBaseName = $"{baseName}_{timestamp}_{index + 1}";
+            usedFileNames.Add(fileBaseName);
+        }
+
+        var bakFileName = $"{fileBaseName}.bak";
+        var zipFileName = $"{fileBaseName}.zip";
 
         var bakFilePath = Path.Combine(_settings.LocalTempPath, bakFileName);
         var zipFilePath = Path.Combine(_settings.LocalTempPath, zipFileName);
 
         try
         {
-            logger.LogInformation("Starting database backup: {Database}", _settings.DatabaseName);
-            await BackupDatabaseAsync(bakFilePath, cancellationToken);
+            logger.LogInformation("Starting database backup: {Database}", database.DatabaseName);
+            await BackupDatabaseAsync(database, bakFilePath, cancellationToken);
             logger.LogInformation("Database backup completed: {File}", bakFilePath);
 
             logger.LogInformation("Compressing backup file...");
@@ -74,7 +114,7 @@ public class Worker(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "An error occurred during the backup cycle.");
+            logger.LogError(ex, "An error occurred while backing up database {Database}.", database.DatabaseName);
         }
         finally
         {
@@ -84,11 +124,15 @@ public class Worker(
         }
     }
 
-    private async Task BackupDatabaseAsync(string bakFilePath, CancellationToken cancellationToken)
+    private static async Task BackupDatabaseAsync(
+        DatabaseSettings database,
+        string bakFilePath,
+        CancellationToken cancellationToken)
     {
-        var sql = $"BACKUP DATABASE [{_settings.DatabaseName}] TO DISK = @path WITH FORMAT, INIT, COMPRESSION";
+        var escapedName = database.DatabaseName.Replace("]", "]]");
+        var sql = $"BACKUP DATABASE [{escapedName}] TO DISK = @path WITH FORMAT, INIT, COMPRESSION";
 
-        await using var connection = new SqlConnection(_connectionString);
+        await using var connection = new SqlConnection(database.ConnectionString);
         await connection.OpenAsync(cancellationToken);
 
         await using var command = new SqlCommand(sql, connection)
@@ -98,6 +142,12 @@ public class Worker(
         command.Parameters.AddWithValue("@path", bakFilePath);
 
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static string MakeSafeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        return new string(name.Select(c => invalid.Contains(c) || c == ' ' ? '_' : c).ToArray());
     }
 
     private static void ZipBackupFile(string bakFilePath, string zipFilePath)
