@@ -18,6 +18,7 @@ builder.Services.AddScoped(sp =>
 });
 
 builder.Services.AddScoped<ContactService>();
+builder.Services.AddScoped<BlogService>();
 
 var siteSettings = builder.Configuration.GetSection("Site").Get<SiteSettings>() ?? new SiteSettings();
 builder.Services.AddSingleton(siteSettings);

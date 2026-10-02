@@ -1,0 +1,73 @@
+@page "/blog/{Slug}"
+@inject BlogService BlogSvc
+@inject SiteSettings Site
+
+@if (loading)
+{
+    <p class="blog-empty container">در حال بارگذاری…</p>
+}
+else if (post is null)
+{
+    <section class="section container blog-not-found">
+        <h1>مطلب مورد نظر پیدا نشد</h1>
+        <p><a href="/blog">بازگشت به بلاگ</a></p>
+    </section>
+}
+else
+{
+    <PageTitle>@post.Title | @Site.Name</PageTitle>
+    <HeadContent>
+        <meta name="description" content="@post.Description" />
+        <meta property="og:title" content="@post.Title" />
+        <meta property="og:description" content="@post.Description" />
+        @if (!string.IsNullOrEmpty(post.CoverImageUrl))
+        {
+            <meta property="og:image" content="@post.CoverImageUrl" />
+        }
+    </HeadContent>
+
+    <article class="section blog-post container">
+        <a href="/blog" class="blog-back">← بازگشت به بلاگ</a>
+
+        @if (!string.IsNullOrEmpty(post.Category))
+        {
+            <span class="blog-card-category">@post.Category</span>
+        }
+        <h1>@post.Title</h1>
+        <div class="blog-post-meta">
+            <span>@post.AuthorName</span>
+            @if (post.PublishedAtUtc is not null)
+            {
+                <span aria-hidden="true">·</span>
+                <span>@post.PublishedAtUtc.Value.ToString("yyyy/MM/dd")</span>
+            }
+            @if (post.ReadMinutes is not null)
+            {
+                <span aria-hidden="true">·</span>
+                <span>@(post.ReadMinutes) دقیقه مطالعه</span>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(post.CoverImageUrl))
+        {
+            <img class="blog-post-cover" src="@post.CoverImageUrl" alt="@post.CoverImageAlt" loading="eager" />
+        }
+
+        <div class="blog-post-content">
+            @((MarkupString)post.ContentHtml)
+        </div>
+    </article>
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = "";
+    private BlogPostDto? post;
+    private bool loading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        post = await BlogSvc.GetBySlugAsync(Slug);
+        loading = false;
+    }
+}

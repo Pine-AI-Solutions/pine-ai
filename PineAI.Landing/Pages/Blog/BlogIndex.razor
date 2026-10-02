@@ -1,0 +1,65 @@
+@page "/blog"
+@inject BlogService BlogSvc
+@inject SiteSettings Site
+
+<PageTitle>بلاگ | @Site.Name</PageTitle>
+
+<section class="section blog-index">
+    <div class="container">
+        <div class="section-header">
+            <span class="section-tag">بلاگ</span>
+            <h1>مطالب @Site.NameEn</h1>
+            <p class="section-desc">نکات عملی برای رشد فروشگاه اینترنتی و مدیریت هوشمند مشتریان.</p>
+        </div>
+
+        @if (loading)
+        {
+            <p class="blog-empty">در حال بارگذاری…</p>
+        }
+        else
+        {
+            <div class="blog-grid">
+                @foreach (var post in posts)
+                {
+                    <a class="blog-card" href="@($"/blog/{post.Slug}")">
+                        @if (!string.IsNullOrEmpty(post.CoverImageUrl))
+                        {
+                            <img src="@post.CoverImageUrl" alt="@post.CoverImageAlt" loading="lazy" width="400" height="240" />
+                        }
+                        <div class="blog-card-body">
+                            @if (!string.IsNullOrEmpty(post.Category))
+                            {
+                                <span class="blog-card-category">@post.Category</span>
+                            }
+                            <h2>@post.Title</h2>
+                            <p>@post.Description</p>
+                            <div class="blog-card-meta">
+                                <span>@post.AuthorName</span>
+                                @if (post.PublishedAtUtc is not null)
+                                {
+                                    <span aria-hidden="true">·</span>
+                                }
+                                @if (post.ReadMinutes is not null)
+                                {
+                                    <span aria-hidden="true">·</span>
+                                    <span>@(post.ReadMinutes) دقیقه مطالعه</span>
+                                }
+                            </div>
+                        </div>
+                    </a>
+                }
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    private List<BlogPostDto> posts = new();
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        posts = await BlogSvc.GetListAsync();
+        loading = false;
+    }
+}
