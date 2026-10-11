@@ -5,6 +5,7 @@ using PineAI.Bots.Bale.Models;
 using PineAI.Bots.Shared.Messages;
 using PineAI.Bots.Shared.Services;
 using PineAI.Bots.Shared.Tools;
+using PineAI.Core.Entities;
 using PineAI.Persistence.Services;
 using PineAI.Shared;
 
@@ -171,8 +172,8 @@ public class BotUpdateHandler(BaleBotClient botClient,
 
         // Continue normal block processing on the penalty-stripped text
         var orderCodes = new List<string>();
-        var visibleOrderCodes = ResponseBlockTools.StripOrderCodeBlocks(textAfterPenalty, orderCodes);
-        visibleOrderCodes = ResponseBlockTools.StripFeedbackBlocks(visibleOrderCodes, out var feedbackJson);
+        var visibleAfterOrders = ResponseBlockTools.StripOrderCodeBlocks(textAfterPenalty, orderCodes);
+        visibleAfterOrders = ResponseBlockTools.StripFeedbackBlocks(visibleAfterOrders, out var feedbackJson);
 
         // Strip any <<VERIFICATION>> block the AI emitted. The block carries the AI's
         // proposed "data was sent to support" sentence. We never forward that sentence
@@ -180,8 +181,71 @@ public class BotUpdateHandler(BaleBotClient botClient,
         // confirmation. Discarding the AI's verification here is what guarantees the user
         // is never told their data was delivered when, in fact, no admin dispatch occurred
         // (malformed JSON, missing required fields, missing TargetChatId, …).
-        visibleOrderCodes = ResponseBlockTools.StripVerificationBlocks(visibleOrderCodes, out var aiVerificationText);
+        visibleAfterOrders = ResponseBlockTools.StripVerificationBlocks(visibleAfterOrders, out var aiVerificationText);
         FeedbackValidator.ValidateAiVerificationText(aiVerificationText, logger);
+
+        // Strip <<PRODUCT_QUERY>> blocks and resolve them from the DB
+        var productQueries = new List<string>();
+        var visibleText = ResponseBlockTools.StripProductQueryBlocks(visibleAfterOrders, productQueries);
+
+        if (productQueries.Count > 0)
+        {
+            var productLines = new List<string>();
+            foreach (var query in productQueries)
+            {
+                var products = await dbContext.Product
+                    .AsNoTracking()
+                    .Where(p =>
+                        EF.Functions.Like(p.ProductName, $"%{query}%") ||
+                        EF.Functions.Like(p.Category, $"%{query}%") ||
+                        EF.Functions.Like(p.Brand ?? "", $"%{query}%") ||
+                        EF.Functions.Like(p.Color ?? "", $"%{query}%") ||
+                        EF.Functions.Like(p.Size ?? "", $"%{query}%") ||
+                        EF.Functions.Like(p.ProductCode ?? "", $"%{query}%") ||
+                        EF.Functions.Like(p.FabricType ?? "", $"%{query}%"))
+                    .OrderBy(p => p.Category)
+                    .ToListAsync(ct);
+
+                productLines.Add(products.Count > 0
+                    ? FormatProductResults(query, products)
+                    : $"🔍 محصولی برای «{query}» یافت نشد.");
+            }
+
+            if (productQueries.Count > 1)
+            {
+                // Comparison request: feed all product data back to the AI so it can
+                // write a proper comparative analysis in Persian.
+                var dataBlock = string.Join("\n\n", productLines);
+                var comparisonPrompt =
+                    $"[داده سیستم - نتایج جستجوی محصولات برای مقایسه]\n\n{dataBlock}\n\n" +
+                    "بر اساس داده‌های بالا، مقایسه جامع و مفیدی از این محصولات برای کاربر بنویس. " +
+                    "شباهت‌ها و تفاوت‌های کلیدی (قیمت، برند، رنگ، سایز، جنس پارچه، موجودی) را به‌صورت واضح بیان کن.";
+
+                var currentSession = sessionStore.GetSession(chatId);
+                var comparisonResponse = await agentService.SendWithSessionAsync(currentSession, comparisonPrompt);
+
+                // Strip all command blocks from the comparison response — the AI should
+                // only produce readable comparison text here, not trigger further actions.
+                var comparisonText = ResponseBlockTools.StripPenaltyBlocks(comparisonResponse.ResponseText, out _);
+                comparisonText = ResponseBlockTools.StripOrderCodeBlocks(comparisonText);
+                comparisonText = ResponseBlockTools.StripFeedbackBlocks(comparisonText, out _);
+                comparisonText = ResponseBlockTools.StripVerificationBlocks(comparisonText, out _);
+                comparisonText = ResponseBlockTools.StripProductQueryBlocks(comparisonText);
+
+                // Persist the updated session from the second AI call.
+                sessionStore.SetSession(chatId, comparisonResponse.SerializedSession);
+
+                visibleText = string.IsNullOrWhiteSpace(comparisonText) ? dataBlock : comparisonText;
+            }
+            else
+            {
+                // Single-product lookup: just append the formatted product details.
+                var productBlock = productLines[0];
+                visibleText = string.IsNullOrWhiteSpace(visibleText)
+                    ? productBlock
+                    : visibleText + "\n\n" + productBlock;
+            }
+        }
 
         // If the AI signalled one or more order codes, resolve them from the DB
         if (orderCodes.Count > 0)
@@ -210,13 +274,13 @@ public class BotUpdateHandler(BaleBotClient botClient,
             var statusBlock = string.Join("\n\n", statusLines);
 
             // Append status info after the AI's visible text
-            if (!string.IsNullOrWhiteSpace(visibleOrderCodes))
-                visibleOrderCodes = visibleOrderCodes + "\n\n" + statusBlock;
+            if (!string.IsNullOrWhiteSpace(visibleText))
+                visibleText = visibleText + "\n\n" + statusBlock;
             else
-                visibleOrderCodes = statusBlock;
+                visibleText = statusBlock;
 
-            if (!string.IsNullOrWhiteSpace(visibleOrderCodes))
-                await SendAndEnqueueBotReplyAsync(chatId, username, visibleOrderCodes, ct);
+            if (!string.IsNullOrWhiteSpace(visibleText))
+                await SendAndEnqueueBotReplyAsync(chatId, username, visibleText, ct);
 
             // A FEEDBACK block may accompany the ORDER_CODE block (e.g. DelayedDelivery
             // where the AI checks the order and escalates in the same turn). Process it too.
@@ -230,13 +294,13 @@ public class BotUpdateHandler(BaleBotClient botClient,
             // (which should contain the AI asking the user for the missing field). The AI's
             // proposed delivery confirmation has already been removed by StripVerificationBlocks
             // above, so no false "data sent to support" claim can leak through this path.
-            await TryDispatchFeedbackAsync(feedbackJson, visibleText: visibleOrderCodes, chatId, username, ct);
+            await TryDispatchFeedbackAsync(feedbackJson, visibleText: visibleText, chatId, username, ct);
         }
         else
         {
             // No FEEDBACK block at all — the AI is just chatting with the user.
-            if (!string.IsNullOrWhiteSpace(visibleOrderCodes))
-                await SendAndEnqueueBotReplyAsync(chatId, username, visibleOrderCodes, ct);
+            if (!string.IsNullOrWhiteSpace(visibleText))
+                await SendAndEnqueueBotReplyAsync(chatId, username, visibleText, ct);
         }
     }
 
@@ -524,6 +588,47 @@ public class BotUpdateHandler(BaleBotClient botClient,
         await SendAndEnqueueBotReplyAsync(userChatId, username, BotSharedMessages.StoreHoursQuerySuccess, ct);
         var log = FeedbackLogBuilder.BuildStoreHoursQueryLog(root, userBaleUsername);
         await botClient.SendMessageAsync(targetChatId, log, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Formats a list of products matching a search query into a user-facing Persian text block.
+    /// </summary>
+    private static string FormatProductResults(string query, List<Product> products)
+    {
+        var lines = new List<string>
+        {
+            $"🛍 نتایج جستجو برای «{query}»:"
+        };
+
+        for (var i = 0; i < products.Count; i++)
+        {
+            var p = products[i];
+            var parts = new List<string> { $"\n📌 محصول {i + 1}: {p.ProductName}" };
+
+            if (!string.IsNullOrWhiteSpace(p.ProductCode))
+                parts.Add($"کد محصول: {p.ProductCode}");
+
+            parts.Add($"دسته‌بندی: {p.Category}");
+
+            if (!string.IsNullOrWhiteSpace(p.Brand))
+                parts.Add($"برند: {p.Brand}");
+
+            if (!string.IsNullOrWhiteSpace(p.Size))
+                parts.Add($"سایز: {p.Size}");
+
+            if (!string.IsNullOrWhiteSpace(p.Color))
+                parts.Add($"رنگ: {p.Color}");
+
+            if (!string.IsNullOrWhiteSpace(p.FabricType))
+                parts.Add($"جنس پارچه: {p.FabricType}");
+
+            parts.Add($"قیمت: {p.Price:N0} تومان");
+            parts.Add($"موجودی: {p.AvailableCount} عدد");
+
+            lines.Add(string.Join("\n", parts));
+        }
+
+        return string.Join("\n", lines);
     }
 
     /// <summary>

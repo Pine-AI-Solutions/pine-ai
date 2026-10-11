@@ -18,6 +18,7 @@ public class PineAIDbContext : DbContext
     public DbSet<BotChatMessage> BotChatMessage { get; set; }
     public DbSet<MenuLink> MenuLink { get; set; }
     public DbSet<UserMenuLink> UserMenuLink { get; set; }
+    public DbSet<Product> Product { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

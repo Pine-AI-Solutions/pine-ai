@@ -53,6 +53,7 @@ For every message it receives from a customer, it:
 2. **Parses structured command blocks** from the AI's response:
    - `<<ORDER_CODE … >>` — triggers a live database lookup and appends the order status and postal tracking code to the reply.
    - `<<FEEDBACK … >>` — triggers routing of a structured notification to one of 11 predefined human-support Bale chat IDs based on the feedback type.
+   - `<<PRODUCT_QUERY … >>` — triggers a live database search for products matching the search term; results include product name, code, category, brand, size, color, fabric type, price, and stock. When two or more blocks are present (comparison request), the system feeds all results back to the AI for a comparative analysis.
 3. **Sends the final reply back to the customer** via `sendMessage`.
 4. **Forwards photos** to the appropriate support chat when the AI flags `HasPhoto: true` (e.g. for defective-product reports).
 5. **Persists all conversations** (both customer messages and bot replies) to the database via a fire-and-forget background queue.
@@ -80,7 +81,7 @@ BotUpdateHandler (IBotUpdateHandler, Scoped)               [PineAI.Bots.Bale]  �
   │       ├── ChatAgentService       (GitHub Models / OpenAI-compatible)       │
   │       └── ArvanChatAgentService  (ArvanCloud OAI-compatible)               │
   │                                                                             │
-  ├── ResponseBlockTools  (parse <<ORDER_CODE>> and <<FEEDBACK>> blocks)       │  [Shared]
+  ├── ResponseBlockTools  (parse <<ORDER_CODE>>, <<FEEDBACK>>, <<PRODUCT_QUERY>> blocks)       │  [Shared]
   │                                                                             │
   ├── PineAIDbContext    (EF Core – order lookups)                             │
   │                                                                             │
@@ -120,9 +121,16 @@ Incoming update
       │     └─ uses/creates per-user session (conversation history)
       │
       ├─ parse AI response:
-      │     StripPenaltyBlocks()   → if <<PENALTY>> found → apply 10-min lock → return
-      │     StripOrderCodeBlocks() → collect order codes
-      │     StripFeedbackBlocks()  → collect feedback JSON
+      │     StripPenaltyBlocks()    → if <<PENALTY>> found → apply 10-min lock → return
+      │     StripOrderCodeBlocks()  → collect order codes
+      │     StripFeedbackBlocks()   → collect feedback JSON
+      │     StripVerificationBlocks() → strip AI delivery confirmation text
+      │     StripProductQueryBlocks() → collect product search terms
+      │
+      ├─ PRODUCT_QUERY present?
+      │     ├─ single query  → look up in DB, append formatted product card to reply
+      │     └─ multiple queries (comparison) → look up all in DB, feed results back
+      │             to AI for a second call → AI writes a Persian comparative analysis
       │
       ├─ ORDER_CODE present?
       │     └─ look up each order in DB, append status + postal tracking code
@@ -148,6 +156,8 @@ These files define:
 - All in-scope and out-of-scope topics.
 - Exact response scripts for each workflow.
 - The JSON templates and required fields for `<<ORDER_CODE>>` and `<<FEEDBACK>>` blocks.
+- The `<<PRODUCT_QUERY>>` block rules: when to emit it, how to form the search term, and how to handle the data returned by the system (including product name, code, category, brand, size, color, fabric type, price, and stock).
+- The comparison flow: when two or more `<<PRODUCT_QUERY>>` blocks are emitted, the system feeds all product data back to the AI for a second turn so it can write a comparative analysis.
 - A knowledge base (products, shipping, policies, etc.) specific to each branch.
 
 **To modify the bot's behavior, edit the relevant `chtbot-instructions-*.md` file.**  

@@ -17,6 +17,7 @@ public static class ResponseBlockTools
     private const string FeedbackStart = "<<FEEDBACK";
     private const string PenaltyStart = "<<PENALTY";
     private const string VerificationStart = "<<VERIFICATION";
+    private const string ProductQueryStart = "<<PRODUCT_QUERY";
     private const string BlockEnd = ">>";
 
     /// <summary>
@@ -51,6 +52,47 @@ public static class ResponseBlockTools
 
             if (collectedOrderCodes is not null && content.Length > 0)
                 collectedOrderCodes.Add(NormalizeDigits(content));
+
+            var blockLength = (blockEnd + BlockEnd.Length) - blockStart;
+            text = text.Remove(blockStart, blockLength);
+            startIndex = blockStart;
+        }
+
+        return text.Trim();
+    }
+
+    /// <summary>
+    /// Strips all <c>&lt;&lt;PRODUCT_QUERY … &gt;&gt;</c> blocks from <paramref name="text"/>.
+    /// Extracted search queries are appended to <paramref name="collectedQueries"/> when provided.
+    /// </summary>
+    /// <param name="text">Raw AI response text that may contain PRODUCT_QUERY blocks.</param>
+    /// <param name="collectedQueries">
+    /// Optional list to receive the trimmed query string from each block.
+    /// </param>
+    /// <returns>The cleaned response text with all PRODUCT_QUERY blocks removed.</returns>
+    public static string StripProductQueryBlocks(string text, List<string>? collectedQueries = null)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text;
+
+        var startIndex = 0;
+
+        while (startIndex < text.Length)
+        {
+            var blockStart = text.IndexOf(ProductQueryStart, startIndex, StringComparison.OrdinalIgnoreCase);
+            if (blockStart == -1)
+                break;
+
+            var blockEnd = text.IndexOf(BlockEnd, blockStart + ProductQueryStart.Length, StringComparison.OrdinalIgnoreCase);
+            if (blockEnd == -1)
+                break;
+
+            var content = text
+                .Substring(blockStart + ProductQueryStart.Length, blockEnd - (blockStart + ProductQueryStart.Length))
+                .Trim();
+
+            if (collectedQueries is not null && content.Length > 0)
+                collectedQueries.Add(content);
 
             var blockLength = (blockEnd + BlockEnd.Length) - blockStart;
             text = text.Remove(blockStart, blockLength);

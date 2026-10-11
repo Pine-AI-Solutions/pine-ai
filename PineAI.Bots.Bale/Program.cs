@@ -7,6 +7,7 @@ using PineAI.Bots.Bale.Services;
 using PineAI.Bots.Bale.Workers;
 using PineAI.Bots.Shared.Services;
 using PineAI.Bots.Shared.Workers;
+using PineAI.Persistence;
 using PineAI.Persistence.Services;
 using Serilog;
 
@@ -77,6 +78,8 @@ try
     builder.Services.AddHostedService<PenaltyStoreCleanupWorker>();
 
     var host = builder.Build();
+
+    host.Services.InitializeDatabase();
 
     var agentService = host.Services.GetRequiredService<IChatAgentService>();
     await agentService.InitAsync();
