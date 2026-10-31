@@ -3,6 +3,7 @@
   <Folder Name="/Solution Items/Docs/">
     <File Path="docs/api-notify-order.md" />
     <File Path="docs/bale-docs.md" />
+    <File Path="docs/safir-docs.md" />
   </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/Application/">
@@ -31,7 +32,7 @@
     <Project Path="PineAI.UI/PineAI.UI.csproj" />
   </Folder>
   <Folder Name="/src/Shared/">
-    <Project Path="PineAI.Shared/PineAI.Shared.csproj" Id="07402509-3af7-432d-9f8e-e119702a43ef" />
     <Project Path="PineAI.Bots.Shared/PineAI.Bots.Shared.csproj" />
+    <Project Path="PineAI.Shared/PineAI.Shared.csproj" Id="07402509-3af7-432d-9f8e-e119702a43ef" />
   </Folder>
 </Solution>
