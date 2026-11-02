@@ -57,6 +57,8 @@ public static class PersistenceServices
         services.AddScoped<IBotConversationService, BotConversationRepository>();
         services.AddScoped<IMenuLinkService, MenuLinkRepository>();
 
+        services.AddScoped<ISafirBroadcastService, SafirBroadcastRepository>();
+
         services.AddScoped<IBaleMessengerService, BaleMessengerService>();
 
         //services.AddHostedService<ScheduledSmsWorker>();

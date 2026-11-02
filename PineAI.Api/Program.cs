@@ -35,6 +35,7 @@ builder.Services.AddPersistenceServices(builder.Configuration);
 builder.Services.AddIdentityServices(builder.Configuration);
 builder.Services.AddSingleton<OrderNotifyQueue>();
 builder.Services.AddHostedService<OrderNotifyWorker>();
+
 builder.Services.AddHttpClient("Melipayamak", client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["Melipayamak:BaseUrl"]);

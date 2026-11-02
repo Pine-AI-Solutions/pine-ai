@@ -155,6 +155,11 @@ dotnet build PineAI.slnx
 | `AiAgent:*` | ApiKey, Model, Endpoint | GitHub Models / OpenAI config |
 | `ArvanAiAgent:*` | ApiKey, Model, Endpoint | ArvanCloud config |
 | `BaleMessenger:Token` | Bot token | Bale API authentication |
+| `BaleMessenger:Safir` / `BaleMessenger:BotId` | Safir Api Access Key / sender bot id | Bale Safir bulk messaging (`PineAI.Api`, UI page `/safir/broadcast`) |
+| `BaleMessenger:SafirBaseUrl` | URL (default `https://safir.bale.ai`) | Safir service address |
+| `BaleMessenger:BroadcastDelayMs` | milliseconds (default `150`) | Pause between two Safir messages of a broadcast |
+| `BaleMessenger:BroadcastStoragePath` | folder (default `App_Data/safir-broadcasts`) | Where unfinished broadcasts (message, images, recipients, progress) are kept so they survive a restart and can be resumed; the API process needs write access |
+| `BaleMessenger:BroadcastRetentionDays` | days (default `30`) | Saved broadcasts older than this are deleted on startup |
 | `Telegram:Token` | Bot token | Telegram API authentication |
 | `ConnectionStrings:Redis` | Connection string | Enables Redis backplane for caching |
 | `Seq:ServerUrl` | URL | Centralized Serilog log sink (optional) |

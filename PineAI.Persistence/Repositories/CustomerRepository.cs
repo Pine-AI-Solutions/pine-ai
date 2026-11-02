@@ -177,6 +177,28 @@ public class CustomerRepository : ICustomerService
         return new UpdateCustomerResult { Success = true, Message = "اطلاعات مشتری با موفقیت به‌روزرسانی شد" };
     }
 
+    public async Task<List<string>> GetDistinctPhoneNumbers()
+    {
+        return await dbContext.Customer
+            .AsNoTracking()
+            .Where(c => c.PhoneNumber != null && c.PhoneNumber != string.Empty)
+            .Select(c => c.PhoneNumber)
+            .Distinct()
+            .OrderBy(p => p)
+            .ToListAsync();
+    }
+
+    public async Task<List<string>> GetTesterPhoneNumbers()
+    {
+        return await dbContext.Customer
+            .AsNoTracking()
+            .Where(c => c.IsTester && c.PhoneNumber != null && c.PhoneNumber != string.Empty)
+            .Select(c => c.PhoneNumber)
+            .Distinct()
+            .OrderBy(p => p)
+            .ToListAsync();
+    }
+
     private static bool IsValidPhoneNumber(string phone)
     {
         return !string.IsNullOrEmpty(phone) 

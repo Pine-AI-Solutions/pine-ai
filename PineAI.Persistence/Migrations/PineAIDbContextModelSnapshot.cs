@@ -322,6 +322,165 @@ namespace PineAI.Persistence.Migrations
                     b.ToTable("OrderStatus");
                 });
 
+            modelBuilder.Entity("PineAI.Core.Entities.SafirBroadcast", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<bool>("CancelRequested")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastActivityAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("State")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Text")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("State", "CreatedAt")
+                        .HasDatabaseName("IX_SafirBroadcast_State_CreatedAt");
+
+                    b.ToTable("SafirBroadcast");
+                });
+
+            modelBuilder.Entity("PineAI.Core.Entities.SafirBroadcastImage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("BroadcastId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BroadcastId");
+
+                    b.ToTable("SafirBroadcastImage");
+                });
+
+            modelBuilder.Entity("PineAI.Core.Entities.SafirBroadcastLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("BroadcastId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BroadcastId", "Id")
+                        .HasDatabaseName("IX_SafirBroadcastLog_BroadcastId_Id");
+
+                    b.ToTable("SafirBroadcastLog");
+                });
+
+            modelBuilder.Entity("PineAI.Core.Entities.SafirBroadcastRecipient", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BroadcastId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime?>("ProcessedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BroadcastId", "Phone")
+                        .IsUnique()
+                        .HasDatabaseName("IX_SafirBroadcastRecipient_BroadcastId_Phone");
+
+                    b.HasIndex("BroadcastId", "Status")
+                        .HasDatabaseName("IX_SafirBroadcastRecipient_BroadcastId_Status");
+
+                    b.ToTable("SafirBroadcastRecipient");
+                });
+
             modelBuilder.Entity("PineAI.Core.Entities.SmsLog", b =>
                 {
                     b.Property<int>("Id")
@@ -470,6 +629,39 @@ namespace PineAI.Persistence.Migrations
                     b.Navigation("OrderStatus");
                 });
 
+            modelBuilder.Entity("PineAI.Core.Entities.SafirBroadcastImage", b =>
+                {
+                    b.HasOne("PineAI.Core.Entities.SafirBroadcast", "Broadcast")
+                        .WithMany("Images")
+                        .HasForeignKey("BroadcastId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Broadcast");
+                });
+
+            modelBuilder.Entity("PineAI.Core.Entities.SafirBroadcastLog", b =>
+                {
+                    b.HasOne("PineAI.Core.Entities.SafirBroadcast", "Broadcast")
+                        .WithMany("Logs")
+                        .HasForeignKey("BroadcastId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Broadcast");
+                });
+
+            modelBuilder.Entity("PineAI.Core.Entities.SafirBroadcastRecipient", b =>
+                {
+                    b.HasOne("PineAI.Core.Entities.SafirBroadcast", "Broadcast")
+                        .WithMany("Recipients")
+                        .HasForeignKey("BroadcastId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Broadcast");
+                });
+
             modelBuilder.Entity("PineAI.Core.Entities.SmsSendJobPart", b =>
                 {
                     b.HasOne("PineAI.Core.Entities.SmsSendJob", "Job")
@@ -505,6 +697,15 @@ namespace PineAI.Persistence.Migrations
             modelBuilder.Entity("PineAI.Core.Entities.OrderStatus", b =>
                 {
                     b.Navigation("CustomerOrders");
+                });
+
+            modelBuilder.Entity("PineAI.Core.Entities.SafirBroadcast", b =>
+                {
+                    b.Navigation("Images");
+
+                    b.Navigation("Logs");
+
+                    b.Navigation("Recipients");
                 });
 
             modelBuilder.Entity("PineAI.Core.Entities.SmsSendJob", b =>

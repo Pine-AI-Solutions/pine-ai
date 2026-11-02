@@ -25,6 +25,7 @@
     <Project Path="PineAI.Backup/PineAI.Backup.csproj" Id="29e1afc2-de7a-4e00-a2ad-9333bf382644" />
     <Project Path="PineAI.Bots.Bale/PineAI.Bots.Bale.csproj" />
     <Project Path="PineAI.Bots.Telegram/PineAI.Bots.Telegram.csproj" />
+    <Project Path="PineAI.SafirSender/PineAI.SafirSender.csproj" Id="714761bb-c895-4caa-ad92-4a65cfb8ed86" />
   </Folder>
   <Folder Name="/src/Presentation/Web/">
     <Project Path="PineAI.Landing/PineAI.Landing.csproj" />

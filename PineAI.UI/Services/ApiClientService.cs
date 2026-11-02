@@ -7,6 +7,7 @@ using PineAI.Core.Features.BotConversation;
 using PineAI.Core.Features.Customer;
 using PineAI.Core.Features.MenuLink;
 using PineAI.Core.Features.Order;
+using PineAI.Core.Features.Safir;
 using PineAI.Core.Features.Sms;
 
 namespace PineAI.UI.Services;
@@ -317,6 +318,164 @@ public class ApiClientService
         {
             return null;
         }
+    }
+
+    // ── Safir broadcast (message to all customers) ─────────────────────────
+    public async Task<SafirRecipientsInfoDto?> GetSafirRecipientsAsync()
+    {
+        try
+        {
+            return await httpClient.GetFromJsonAsync<SafirRecipientsInfoDto>("api/safir/recipients");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task<StartSafirBroadcastResult> StartSafirBroadcastAsync(string? message, IEnumerable<SafirImageUpload> images)
+    {
+        try
+        {
+            using var form = new MultipartFormDataContent();
+            form.Add(new StringContent(message ?? string.Empty), "message");
+
+            foreach (var image in images)
+            {
+                var content = new ByteArrayContent(image.Content);
+                content.Headers.ContentType = MediaTypeHeaderValue.TryParse(image.ContentType, out var mediaType)
+                    ? mediaType
+                    : new MediaTypeHeaderValue("application/octet-stream");
+                form.Add(content, "images", image.FileName);
+            }
+
+            var response = await httpClient.PostAsync("api/safir/broadcast", form);
+            if (response.IsSuccessStatusCode)
+            {
+                var ok = await response.Content.ReadFromJsonAsync<StartSafirBroadcastResult>();
+                return ok ?? new StartSafirBroadcastResult { Success = false, Message = "خطا در خواندن پاسخ سرور" };
+            }
+
+            return new StartSafirBroadcastResult
+            {
+                Success = false,
+                Message = await ReadErrorMessageAsync(response, "خطا در شروع ارسال")
+            };
+        }
+        catch (TaskCanceledException)
+        {
+            return new StartSafirBroadcastResult { Success = false, Message = "زمان درخواست به پایان رسید" };
+        }
+        catch (Exception ex)
+        {
+            return new StartSafirBroadcastResult { Success = false, Message = $"خطا در اتصال به سرور: {ex.Message}" };
+        }
+    }
+
+    public async Task<SafirBroadcastStatusDto?> GetSafirBroadcastAsync(string jobId)
+    {
+        try
+        {
+            return await httpClient.GetFromJsonAsync<SafirBroadcastStatusDto>(
+                $"api/safir/broadcast/{Uri.EscapeDataString(jobId)}");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Latest broadcast job, or null when none exists (204) or the call failed.</summary>
+    public async Task<SafirBroadcastStatusDto?> GetLatestSafirBroadcastAsync()
+    {
+        try
+        {
+            var response = await httpClient.GetAsync("api/safir/broadcast/latest");
+            if (response.StatusCode == System.Net.HttpStatusCode.NoContent || !response.IsSuccessStatusCode)
+                return null;
+            return await response.Content.ReadFromJsonAsync<SafirBroadcastStatusDto>();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task<bool> CancelSafirBroadcastAsync(string jobId)
+    {
+        try
+        {
+            var response = await httpClient.PostAsync($"api/safir/broadcast/{Uri.EscapeDataString(jobId)}/cancel", null);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Broadcasts that stopped before reaching everyone and can be resumed.</summary>
+    public async Task<List<SafirBroadcastStatusDto>> GetUnfinishedSafirBroadcastsAsync()
+    {
+        try
+        {
+            return await httpClient.GetFromJsonAsync<List<SafirBroadcastStatusDto>>("api/safir/broadcast/unfinished")
+                   ?? new List<SafirBroadcastStatusDto>();
+        }
+        catch
+        {
+            return new List<SafirBroadcastStatusDto>();
+        }
+    }
+
+    /// <summary>Continues an unfinished broadcast. Returns the job status on success, otherwise an error message.</summary>
+    public async Task<(SafirBroadcastStatusDto? Status, string? Error)> ResumeSafirBroadcastAsync(string jobId)
+    {
+        try
+        {
+            var response = await httpClient.PostAsync($"api/safir/broadcast/{Uri.EscapeDataString(jobId)}/resume", null);
+            if (response.IsSuccessStatusCode)
+                return (await response.Content.ReadFromJsonAsync<SafirBroadcastStatusDto>(), null);
+
+            return (null, await ReadErrorMessageAsync(response, "ادامه ارسال انجام نشد"));
+        }
+        catch (Exception ex)
+        {
+            return (null, $"خطا در اتصال به سرور: {ex.Message}");
+        }
+    }
+
+    public async Task<(bool Success, string? Error)> DeleteSafirBroadcastAsync(string jobId)
+    {
+        try
+        {
+            var response = await httpClient.DeleteAsync($"api/safir/broadcast/{Uri.EscapeDataString(jobId)}");
+            return response.IsSuccessStatusCode
+                ? (true, null)
+                : (false, await ReadErrorMessageAsync(response, "حذف انجام نشد"));
+        }
+        catch (Exception ex)
+        {
+            return (false, $"خطا در اتصال به سرور: {ex.Message}");
+        }
+    }
+
+    private static async Task<string> ReadErrorMessageAsync(HttpResponseMessage response, string fallback)
+    {
+        try
+        {
+            var error = await response.Content.ReadFromJsonAsync<MessageResponse>();
+            if (!string.IsNullOrWhiteSpace(error?.Message))
+                return error.Message;
+        }
+        catch
+        {
+            // body was empty or not JSON (e.g. 413 from the web server)
+        }
+
+        return response.StatusCode == System.Net.HttpStatusCode.RequestEntityTooLarge
+            ? "حجم فایل‌ها بیش از حد مجاز است"
+            : fallback;
     }
 }
 

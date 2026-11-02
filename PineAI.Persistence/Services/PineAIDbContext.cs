@@ -18,6 +18,10 @@ public class PineAIDbContext : DbContext
     public DbSet<BotChatMessage> BotChatMessage { get; set; }
     public DbSet<MenuLink> MenuLink { get; set; }
     public DbSet<UserMenuLink> UserMenuLink { get; set; }
+    public DbSet<SafirBroadcast> SafirBroadcast { get; set; }
+    public DbSet<SafirBroadcastImage> SafirBroadcastImage { get; set; }
+    public DbSet<SafirBroadcastRecipient> SafirBroadcastRecipient { get; set; }
+    public DbSet<SafirBroadcastLog> SafirBroadcastLog { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -74,6 +78,37 @@ public class PineAIDbContext : DbContext
             .HasIndex(um => new { um.UserId, um.MenuLinkId })
             .IsUnique()
             .HasDatabaseName("IX_UserMenuLink_UserId_MenuLinkId");
+
+        // ── Safir broadcasts ───────────────────────────────────────────────
+
+        modelBuilder.Entity<SafirBroadcast>()
+            .HasIndex(b => new { b.State, b.CreatedAt })
+            .HasDatabaseName("IX_SafirBroadcast_State_CreatedAt");
+
+        modelBuilder.Entity<SafirBroadcastImage>()
+            .HasOne(i => i.Broadcast).WithMany(b => b.Images)
+            .HasForeignKey(i => i.BroadcastId).OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SafirBroadcastRecipient>()
+            .HasOne(r => r.Broadcast).WithMany(b => b.Recipients)
+            .HasForeignKey(r => r.BroadcastId).OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SafirBroadcastRecipient>()
+            .HasIndex(r => new { r.BroadcastId, r.Phone })
+            .IsUnique()
+            .HasDatabaseName("IX_SafirBroadcastRecipient_BroadcastId_Phone");
+
+        modelBuilder.Entity<SafirBroadcastRecipient>()
+            .HasIndex(r => new { r.BroadcastId, r.Status })
+            .HasDatabaseName("IX_SafirBroadcastRecipient_BroadcastId_Status");
+
+        modelBuilder.Entity<SafirBroadcastLog>()
+            .HasOne(l => l.Broadcast).WithMany(b => b.Logs)
+            .HasForeignKey(l => l.BroadcastId).OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SafirBroadcastLog>()
+            .HasIndex(l => new { l.BroadcastId, l.Id })
+            .HasDatabaseName("IX_SafirBroadcastLog_BroadcastId_Id");
 
         // Seed default menu links
         modelBuilder.Entity<MenuLink>().HasData(
